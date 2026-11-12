@@ -104,4 +104,4 @@ En empate gana **Prototipo + experimentación**, luego **Problema, usuario y evi
 
 ---
 
-¿Dudas? Busquen a Daniel González León (Workbliss HUB) en el evento.
+¿Dudas? Busquen a Daniel González, David López o Gerardo Cid (Workbliss HUB) en el evento.
