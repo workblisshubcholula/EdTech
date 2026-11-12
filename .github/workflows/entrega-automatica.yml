@@ -1,0 +1,95 @@
+# Acepta automáticamente las entregas de los equipos.
+# Un pull request se integra solo si:
+#   1. llega antes del cierre (sábado 14 de noviembre, 12:00 hora del centro de México),
+#   2. todos sus archivos están dentro de UNA sola carpeta en equipos/<nombre-del-equipo>/,
+#   3. no toca la plantilla ni las bases del track,
+#   4. la carpeta es nueva o la creó la misma cuenta de GitHub que manda el pull request.
+# Si algo no cumple, deja un comentario y el pull request espera revisión manual.
+#
+# Seguridad: usa pull_request_target, pero NUNCA descarga ni ejecuta el código del
+# pull request; solo lee la lista de archivos que cambia, a través de la API.
+
+name: Entrega automática
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: entrega-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Revisar y aceptar la entrega
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          AUTOR: ${{ github.event.pull_request.user.login }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          CIERRE: "2026-11-14T18:00:00Z" # 12:00 en Ciudad de México (UTC-6)
+        run: |
+          set -euo pipefail
+          comentar() { gh pr comment "$PR" -R "$REPO" --body "$1"; }
+
+          if [ "$BASE" != "main" ]; then
+            echo "El pull request no va a main; no se hace nada."
+            exit 0
+          fi
+
+          if [ "$(date -u +%s)" -ge "$(date -u -d "$CIERRE" +%s)" ]; then
+            comentar "⏰ Este pull request llegó después del cierre de entregas (sábado 14, 12:00). Lo revisará el equipo organizador."
+            exit 0
+          fi
+
+          # Lista de archivos que cambia el pull request (incluye nombres anteriores si hubo renombres)
+          gh api "repos/$REPO/pulls/$PR/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty)' > /tmp/archivos.txt
+
+          if [ ! -s /tmp/archivos.txt ]; then
+            comentar "Este pull request no trae archivos. Revisen que hayan subido su carpeta dentro de \`equipos/\`."
+            exit 0
+          fi
+
+          # Todas las rutas deben estar en equipos/<carpeta>/... con un nombre válido
+          if grep -Ev '^equipos/[a-z0-9][a-z0-9-]{1,49}/.+' /tmp/archivos.txt > /tmp/fuera.txt; then
+            lista=$(head -n 10 /tmp/fuera.txt | sed 's/^/- `/; s/$/`/')
+            comentar "👀 Este pull request toca archivos fuera de su carpeta de equipo, o el nombre de la carpeta no es válido (minúsculas, números y guiones). El equipo organizador lo revisará a mano.
+
+          $lista"
+            exit 0
+          fi
+
+          cut -d/ -f2 /tmp/archivos.txt | sort -u > /tmp/carpetas.txt
+          if [ "$(wc -l < /tmp/carpetas.txt)" -ne 1 ]; then
+            comentar "👀 Este pull request cambia más de una carpeta de equipo. Cada entrega debe tocar solo su propia carpeta. El equipo organizador lo revisará a mano."
+            exit 0
+          fi
+          CARPETA=$(cat /tmp/carpetas.txt)
+
+          if [ "$CARPETA" = "_plantilla-equipo" ]; then
+            comentar "👀 Este pull request modifica la plantilla. Copien \`equipos/_plantilla-equipo/\` a una carpeta nueva con el nombre de su equipo y suban ahí su trabajo."
+            exit 0
+          fi
+
+          # ¿Quién creó esta carpeta? Se lee de los mensajes de entregas anteriores: "Entrega: carpeta (@usuario)"
+          DUENO=$(gh api "repos/$REPO/commits?path=equipos/$CARPETA&sha=main&per_page=100" \
+            --jq '[.[] | .commit.message | capture("\\(@(?<u>[A-Za-z0-9-]+)\\)") | .u] | last // empty')
+
+          if [ -n "$DUENO" ] && [ "$DUENO" != "$AUTOR" ]; then
+            comentar "👀 La carpeta \`equipos/$CARPETA/\` la creó @$DUENO. Si son del mismo equipo, el equipo organizador lo aceptará a mano; si no, elijan otro nombre de carpeta."
+            exit 0
+          fi
+
+          gh pr merge "$PR" -R "$REPO" --squash \
+            --subject "Entrega: $CARPETA (@$AUTOR)" \
+            --body "Entrega automática del pull request #$PR."
+
+          comentar "✅ ¡Entrega recibida! Su carpeta \`equipos/$CARPETA/\` ya está en el repositorio. Pueden seguir mandando actualizaciones hasta el sábado a las 12:00: cada pull request nuevo se integra igual."
