@@ -71,6 +71,17 @@ git push
 
 Y abran un *pull request* hacia este repositorio. Pueden mandar varios: cuenta el último que llegue antes de las 12:00.
 
+### Aceptación automática
+
+No tienen que esperar a nadie: si su pull request cumple las reglas, **se integra solo en un par de minutos** y verán un comentario ✅. Las reglas son:
+
+- Llega antes del sábado 14 a las 12:00.
+- Todos los archivos están dentro de **una sola** carpeta `equipos/<nombre-de-su-equipo>/` (minúsculas, números y guiones).
+- No toca la plantilla ni las bases del track.
+- La carpeta es nueva o la creó la misma cuenta de GitHub. **Manden todas sus entregas desde la misma cuenta.**
+
+Si algo no cumple, el pull request recibe un comentario 👀 explicando por qué y lo revisa el equipo organizador.
+
 ### Reglas de la carpeta
 
 - Trabajen **solo** dentro de su carpeta.
